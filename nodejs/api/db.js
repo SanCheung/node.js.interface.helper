@@ -11,27 +11,37 @@ var db_config = {
 };
 
 var connection;
+var idTimer = 0;
 
 function handleConnect(){
-  //console.log( "createConnection " + connection );
   if( connection != undefined ){
     return connection;
   }
 
-  connection = mysql.createConnection(db_config); // Recreate the connection, since
+    console.log( "Try to connect..." );
+    connection = mysql.createConnection(db_config); // Recreate the connection, since
                                                   // the old one cannot be reused.
 
   connection.connect(function(err) {              // The server is either down
     if(err) {                                     // or restarting (takes a while sometimes).
-      console.log('error when connecting to db:', err);
-      setTimeout(handleConnect, 2000);      // We introduce a delay before attempting to reconnect,
-    }                                         // to avoid a hot loop, and to allow our node script to
+      console.log('ERROR! Connecting to db:', err);
+      connection = undefined;
+      idTimer = setInterval(handleConnect, 2000);      // We introduce a delay before attempting to reconnect,
+    }                                        // to avoid a hot loop, and to allow our node script to
+    else {
+        if( idTimer != 0 ){
+            clearInterval( idTimer );
+            idTimer = 0;  
+        }
+        console.log( "db OK!" );
+    }
   });                                         // process asynchronous requests in the meantime.
                                               // If you're also serving http, display a 503 error.
   connection.on('error', function(err) {
     console.log('db error', err);
     if(err.code === 'PROTOCOL_CONNECTION_LOST') {   // Connection to the MySQL server is usually
-      handleConnect();                            // lost due to either server restart, or a
+        connection = undefined;
+        handleConnect();                        // lost due to either server restart, or a
     } else {                                        // connnection idle timeout (the wait_timeout
       throw err;                                    // server variable configures this)
     }
@@ -40,5 +50,4 @@ function handleConnect(){
   return connection; 
 }
 
-//handleConnect();
-exports.init = handleConnect;
+exports.db = handleConnect;

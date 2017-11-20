@@ -3,7 +3,64 @@ var qs = require("querystring");
 
 var fs = require("fs");
 var $ = require('underscore');
-var connection = require("./db").init();
+
+//var connection = require("./db").init();
+//var connection = require("./db").db();
+
+var mysql = require('mysql');
+var cfg = require("./CONFIG");
+
+var db_config = {
+  host     : cfg.db_host,
+  user     : cfg.db_user,
+  password : cfg.db_password,
+  port     : cfg.db_port,
+  database : cfg.db_database,
+  useConnectionPooling: true
+};
+
+var connection;
+
+function handleConnect(){
+    if( connection != undefined ){
+        return connection;
+    }
+
+    //console.log( "Try to connect..." );
+    connection = mysql.createConnection(db_config); // Recreate the connection, since
+                                                  // the old one cannot be reused.
+    connection.connect(function(err) {              // The server is either down
+        if(err) {                                     // or restarting (takes a while sometimes).
+            //console.log('ERROR! ', err);
+            connection = undefined;
+            setTimeout(handleConnect, 2000);      // We introduce a delay before attempting to reconnect,
+        }                                        // to avoid a hot loop, and to allow our node script to
+        //else {
+        //console.log( "db OK!" );
+        //}
+    });                                         // process asynchronous requests in the meantime.
+                                              // If you're also serving http, display a 503 error.
+    connection.on('error', function(err) {
+        console.log('ERROR! mysql', err);
+        if(err.code === 'PROTOCOL_CONNECTION_LOST') {   // Connection to the MySQL server is usually
+            connection = undefined;
+            handleConnect();                        // lost due to either server restart, or a
+        } else {                                        // connnection idle timeout (the wait_timeout
+            console.log('MYSQL ERROR!!!', err);
+            throw err;                                    // server variable configures this)
+        }
+    });
+
+    return connection; 
+}
+
+handleConnect();
+
+
+
+
+
+
 
 // 格式化时间
 function formatTime(date) {
@@ -11,6 +68,14 @@ function formatTime(date) {
  		return "";
  	return new Date(date).toLocaleString();
 };
+
+// 输出Json样式
+function sendJson( res, data ){
+    res.writeHead(200,{"Content-Type":"text/plain;charset=UTF-8"});
+    res.write(  JSON.stringify( data, null, 2 ) ); 
+    res.end();   
+}
+
 
 // 将http Request的参数表，map化
 function requst2map( req ){
@@ -48,9 +113,38 @@ function info( res, sql, m ){
 			}
         }
 
-        res.send( data );
+        //res.send( data );
+        sendJson( res, data );
     });
 }
+
+// 执行一个插入/更新/存储过程等不需要返回数据的SQL语句
+function doSqlWithParam( req, res, sql, params ){
+    var mapReq = requst2map( req );
+    console.log( mapReq );
+    
+    var aq = [];
+    for( var p in params ){
+        aq.push( mapReq[ params[p] ] );
+    }
+
+    console.log( aq );
+    
+    connection.query( sql, aq, (err, rows)=> {  
+        var data = {};
+        if (err) {  
+            data = { errorInfo: err.toString() };  
+        }
+        else {
+            data = rows;
+        }
+
+        //res.send( data );
+        sendJson( res, data );
+    });   
+}
+
+
 
 // 获取单一数据列（带参数）
 function infoWithParam( req, res, sql, params, m ){
@@ -74,7 +168,8 @@ function infoWithParam( req, res, sql, params, m ){
 			}
         }
 
-        res.send( data );
+        //res.send( data );
+        sendJson( res, data );
     });
 }
 
@@ -100,7 +195,8 @@ function infoWithParam2( req, res, sql, params, fn ){
 			}
         }
 
-        res.send( data );
+        //res.send( data );
+        sendJson( res, data );
     });
 }
 
@@ -148,7 +244,8 @@ function infoList( res, sql, m ){
         	}
 
 		}
-		res.send( data );
+		//res.send( data );
+        sendJson( res, data );
     });    
 }
 
@@ -158,7 +255,7 @@ function infoList2( res, sql, fn ){
    connection.query( sql, (err, rows)=> { 
 		var data = {}; 
 		if (err){
-			data = { errorInfo: err.toString() }; 
+			data = { errorInfo: err.toString() };
 		}
 		else {
 			if(rows == '' ){
@@ -171,7 +268,9 @@ function infoList2( res, sql, fn ){
         	}
 
 		}
-		res.send( data );
+		
+        //res.send( data);
+        sendJson( res, data );
     });    
 }
 
@@ -201,7 +300,8 @@ function infoListWithParam( req, res, sql, params, m ){
         	}
 
 		}
-		res.send( data );
+		//res.send( data );
+        sendJson( res, data );
     });    
 }
 
@@ -235,6 +335,9 @@ exports.info = info;
 exports.infoWithParam = infoWithParam;
 exports.infoWithParam2 = infoWithParam2;
 exports.infoWithParam3 = infoWithParam3;
+exports.doSqlWithParam = doSqlWithParam;
+
+
 
 exports.infoList = infoList;
 exports.infoList2 = infoList2;

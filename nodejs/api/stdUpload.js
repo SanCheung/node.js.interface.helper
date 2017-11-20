@@ -13,8 +13,7 @@ function returnMkdirError( res ){
 	res.end();
 }
 
-
-function upload(req,res){ 
+function upload(req,res, rootdir){ 
     var form = new formidable.IncomingForm();
     //form.encoding = 'utf-8';
 
@@ -30,7 +29,8 @@ function upload(req,res){
     
         var srcfile = files.file.path;
        
-        var dir = process.cwd() + "/public/file";
+        //var dir = process.cwd() + "/public/file";
+        var dir = process.cwd() + rootdir;
         if( !fs.existsSync(dir) ){
         	fs.mkdirSync(dir, (err)=>{
         		if( err ){
